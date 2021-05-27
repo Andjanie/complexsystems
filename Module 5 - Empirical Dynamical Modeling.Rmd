@@ -1,0 +1,278 @@
+---
+---
+title: "Script for Module 8 - Empirical Dynamic Modeling Exercises"
+author: "Joost Oudesluijs"
+date: "23-3-2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(rEDM)
+library(Kendall)
+library(nonlinearTseries)
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(broom)
+library(future)
+library(tseries)
+library(pracma)
+library(tseriesChaos)
+plan(multiprocess)
+```
+
+# Exercise 1 
+## 1) Load the data
+```{r,}
+df <- read.csv("input/climate_data.csv", stringsAsFactors = FALSE)
+df$observation <- 1:nrow(df) 
+df <- subset(df, select = c("observation", "Average.temperature..Â.F.", "Average.humidity....","Average.barometer..in."))
+
+df <- df %>%
+  rename(
+    obs = observation,
+    temp = Average.temperature..Â.F.,
+    humidity = Average.humidity....,
+    baro = Average.barometer..in.)
+```
+
+Take pre-processing steps
+Center the variables around the mean for comparison
+```{r}
+df$temp <- as.numeric(scale(df$temp))
+df$humidity      <- as.numeric(scale(df$humidity))
+df$baro <- as.numeric(scale(df$baro ))
+df_small <- df[1:1150,]
+head(df)
+```
+
+Let's take a look at the time series
+```{r}
+plot1 <- ggplot(data=df_small, aes(x=obs, y=temp)) + 
+  geom_line(aes(obs, temp),color="black") + 
+  geom_line(aes(obs,baro), color="blue") + 
+  xlab("Time") + ylab("Values") + 
+  ggtitle("Temp-Baro Time Series")
+plot1
+
+plot1 <- ggplot(data=df_small, aes(x=obs, y=temp)) + 
+  geom_line(aes(obs, temp),color="black") + 
+  geom_line(aes(obs,humidity), color="blue") + 
+  xlab("Time") + ylab("Values") + 
+  ggtitle("Temp-Humidity Time Series")
+plot1
+
+plot1 <- ggplot(data=df_small, aes(x=obs, y=baro)) + 
+  geom_line(aes(obs, baro),color="black") + 
+  geom_line(aes(obs), color="blue") + 
+  xlab("Time") + ylab("Values") + 
+  ggtitle("Baro-Humidity Time Series")
+plot1
+```
+
+Now let's look at a scatterplot; some systematic pattern in all 
+```{r}
+plot2 <- ggplot(data=df, aes(x=temp, y=baro)) + 
+  geom_point() +
+  xlab("Temp") + ylab("Baro") + 
+  ggtitle("Temp and Baro Scatterplot")
+plot2
+
+plot2 <- ggplot(data=df, aes(x=temp, y=humidity)) + 
+  geom_point() +
+  xlab("Temp") + ylab("Baro") + 
+  ggtitle("Temp and Humidity Scatterplot")
+plot2
+
+plot2 <- ggplot(data=df, aes(x=baro, y=humidity)) + 
+  geom_point() +
+  xlab("Temp") + ylab("Baro") + 
+  ggtitle("Baro and Humidity Scatterplot")
+plot2
+```
+
+### Do you need to take any pre-processng steps? 
+The signals for temp looks stationary based on kpss test, so no need to detrend.
+>0.05 p-value: no evidence that it is not trend stationary. Could be trend stationary. time trend with stationary errors.
+<0.05 p-value: evidence that the data its not trend stationary
+p-value is significant (with p_value < 0.05) and hence, reject null hypothesis (series is stationary) and derive that the series is NOT stationary. Which means that we have a good guess that we have a trend with non stationary errors.
+
+#detrending doesn't do a thing for kpss test
+```{r}
+random_ts <- ts(rnorm(1:300, mean=1, sd=2),start=1,end=300,frequency=1)
+kpss.test((random_ts), lshort=TRUE, null="Trend")
+
+kpss.test((df$temp), lshort=TRUE, null="Trend")
+kpss.test((df$humidity), lshort=TRUE, null="Trend")
+kpss.test((df$baro), lshort=TRUE, null="Trend")
+```
+
+```{r}
+#timelag
+tau.ami <- timeLag(df$temp, technique = "ami", lag.max = 100, do.plot = T)
+tau.ami1 <- timeLag(df$baro, technique = "ami", lag.max = 100, do.plot = T)
+tau.ami2 <- timeLag(df$humidity, technique = "ami", lag.max = 100, do.plot = T)
+
+#embedding with Cao
+emb.dim  <- estimateEmbeddingDim(df_small$temp, time.lag = tau.ami, max.embedding.dim = 15)
+emb.dim1 <- estimateEmbeddingDim(df_small$baro, time.lag = tau.ami1, max.embedding.dim = 15)
+emb.dim2 <- estimateEmbeddingDim(df_small$humidity, time.lag = tau.ami2, max.embedding.dim = 15)
+
+#embedding with FNN
+fnn.out <- false.nearest(df$temp, m = 15, d = tau.ami, t = 10, eps = sd(df$temp)/2 )
+fnn.out1 <- false.nearest(df$baro, m = 15, d = tau.ami1, t = 10, eps = sd(df$baro)/2 )
+fnn.out2 <- false.nearest(df$humidity, m = 15, d = tau.ami2, t = 10, eps = sd(df$humidity)/2 )
+```
+
+```{r}
+simplex_out_ML <- Simplex(dataFrame = df_small, lib = lib_point, pred = pred_point, E=9, columns='temp', target ='temp')
+
+# Plot observed versus predicted values
+plot(simplex_out_ML$Observations,type='l', xlab = "Time", ylab="Value", main = "Temp Simplex Projection")
+lines(simplex_out_ML$Predictions,type='l',col="blue")
+
+ComputeError(simplex_out_ML$Observations, simplex_out_ML$Predictions)
+simplex_stats <- compute_stats(simplex_out_ML$Observations, simplex_out_ML$Predictions)
+
+simplex_out_ML <- Simplex(dataFrame = df_small, lib = lib_point, pred = pred_point, E=4, columns='baro', target ='baro')
+
+# Plot observed versus predicted values
+plot(simplex_out_ML$Observations,type='l', xlab = "Time", ylab="Value", main = "Baro Simplex Projection")
+lines(simplex_out_ML$Predictions,type='l',col="blue")
+
+ComputeError(simplex_out_ML$Observations, simplex_out_ML$Predictions)
+simplex_stats <- compute_stats(simplex_out_ML$Observations, simplex_out_ML$Predictions)
+
+simplex_out_ML <- Simplex(dataFrame = df_small, lib = lib_point, pred = pred_point, E=9, columns='humidity', target ='humidity')
+
+# Plot observed versus predicted values
+plot(simplex_out_ML$Observations,type='l', xlab = "Time", ylab="Value", main = "Humidity Simplex Projection")
+lines(simplex_out_ML$Predictions,type='l',col="blue")
+
+ComputeError(simplex_out_ML$Observations, simplex_out_ML$Predictions)
+simplex_stats <- compute_stats(simplex_out_ML$Observations, simplex_out_ML$Predictions)
+```
+
+```{r}
+xcor_out <- ccf(df_small$temp,df_small$baro,lag.max=6,type="correlation",plot = FALSE)$acf
+# Run the convergent cross mapping
+# Note with this max libSize (1000) it can take some time to run this
+cmap <- CCM(dataFrame = df_small, E = 9, Tp = 0, columns = "temp", target = "baro", libSizes = "10 1150 50", sample = 100, showPlot = TRUE )
+# Add the cross correlation to the plot
+abline(h = max(abs(xcor_out)), col="black",lty=2)
+max(abs(xcor_out))
+
+tidy(Kendall::MannKendall(cmap$`temp:baro`)) # <.05
+tidy(Kendall::MannKendall(cmap$`baro:temp`)) # <.05. Therefore bidirectional causal relationship
+
+####### Run the convergent cross mapping
+xcor_out1 <- ccf(df_small$temp,df_small$humidity,lag.max=6,type="correlation",plot = FALSE)$acf
+# Note with this max libSize (1000) it can take some time to run this
+cmap1 <- CCM(dataFrame = df_small, E = 9, Tp = 0, columns = "temp", target = "humidity", libSizes = "10 1150 50", sample = 100, showPlot = TRUE )
+# Add the cross correlation to the plot
+abline(h = max(abs(xcor_out1)), col="black",lty=2)
+max(abs(xcor_out1))                               #relative low CCF compared to temp-baro
+
+tidy(Kendall::MannKendall(cmap1$`temp:humidity`)) #<0.05
+tidy(Kendall::MannKendall(cmap1$`humidity:temp`)) #<0.05. therefore bidirectional causal relationship
+
+# Run the convergent cross mapping
+xcor_out2 <- ccf(df_small$baro,df_small$humidity,lag.max=6,type="correlation",plot = FALSE)$acf
+# Note with this max libSize (1000) it can take some time to run this
+cmap2 <- CCM(dataFrame = df_small, E = 9, Tp = 0, columns = "baro", target = "humidity", libSizes = "10 1150 50", sample = 100, showPlot = TRUE )
+# Add the cross correlation to the plot
+abline(h = max(abs(xcor_out2)), col="black",lty=2)
+max(abs(xcor_out2))
+tidy(Kendall::MannKendall(cmap2$`baro:humidity`))
+tidy(Kendall::MannKendall(cmap2$`humidity:baro`))
+```
+
+## 2) Check for the optimal embedding dimension for temp
+```{r}
+# Set library and pred (train and test set)
+lib_point <- c(1,floor(max(length(df_small$temp))/2))
+pred_point <- c(floor(max(length(df_small$temp))/2)+1,max(length(df_small$temp)))
+```
+It looks like E = 6 is the one the optimizes prediction skill. 
+
+## 2) Does adding an additional variable increase our prediction skill using simplex projection? Perform univariate (on ML) and multivariate embedding (with both ML and AP) and compare the prediction skill.
+```{r}
+# First we find the right parameters for univariate embedding
+tau.ami <- timeLag(df_small$temp, technique = "ami", lag.max = 100, do.plot = T)
+
+# Now we've selected the delay, determine an appropriate number of embedding dimensions using Cao's method
+emb.dim <- estimateEmbeddingDim(df_small$temp, time.lag = tau.ami, max.embedding.dim = 15)
+
+# Print both parameters
+print(tau.ami)
+print(emb.dim)
+```
+
+Let's create our multivariate embedding and simplex projection. In this case, we are only making the projection using ML and AP with no time delayed copies.
+```{r}
+smap_ML_multi_ <- block_lnlp(block = df_small, method= "s-map", lib = lib_point, pred = pred_point, columns= c("temp", "baro"), first_column_time = TRUE, stats_only = FALSE, theta=0, save_smap_coefficients = TRUE)
+
+smap_ML_multi_hum <- block_lnlp(block = df_small, method= "s-map", lib = lib_point, pred = pred_point, columns= c("humidity", "temp"), first_column_time = TRUE, stats_only = FALSE, theta=0, save_smap_coefficients = TRUE)
+
+smap_ML_multi_hum_baro <- block_lnlp(block = df_small, method= "s-map", lib = lib_point, pred = pred_point, columns= c("humidity", "baro"), first_column_time = TRUE, stats_only = FALSE, theta=0, save_smap_coefficients = TRUE)
+
+# Extract our metrics
+multivariate_rho <- smap_ML_multi_$stats$rho[1]
+multivariate_rho1 <- smap_ML_multi_hum$stats$rho[1]
+multivariate_rho2 <- smap_ML_multi_hum_baro$stats$rho[1]
+
+multivariate_rho
+multivariate_rho1
+multivariate_rho2
+```
+
+If you wanted to create an additional embedding, then this function would come in handy. But it would be important to choose an embedding dimension and time delay that suits both ML and AP. 
+```{r}
+# Note: This is another possibility for creating a multivariate embedding
+ML_multi_emb <- Embed(dataFrame=df_small, E = emb.dim, tau=tau.ami,columns="temp baro") 
+
+```
+
+## 3) How does multi-view embedding compare? Does it increase prediction skill? 
+```{r}
+ML_mv_out <- Multiview(dataFrame = df_small, lib= lib_point, pred = pred_point, E=2, target= "temp", columns = "temp baro")
+multiview_stats <- compute_stats(ML_mv_out$Predictions$Observations,ML_mv_out$Predictions$Predictions)
+multiview_stats
+```
+
+Judging from the figure below it looks like,the univariate embedding has the highest predictive skill. To be fair, these are all above .99 so the difference is likely marginal. Note as well that the multivariate embedding was done with only the ML and AP with no further dimensions or time delays. It could be that finding a set of 'optimal parameters' for both time series, could improve prediction skill. Multiview embedding does appear to be better than the multivariate in this case, perhaps for the aforementioned reason.  
+
+```{r}
+# Let's create a box plot to compare the rhos
+rhos <- c(multivariate_rho, multivariate_rho1,multivariate_rho2)
+rhos <- as.numeric(rhos)
+names(rhos) <- c("Multivariate 1", "Multivariate 2","multivariate3")
+barplot(rhos, xlab="Methods", xpd = F, ylab=expression(paste("Prediction skill (", rho, ")")), ylim=c(0.1, 1)); box()
+```
+
+## 4) Does the interaction between the two variables differ over time? Make a plot of the time-varying interaction strengths estimated from the prior S-Map projections. 
+
+good row values for univariate smap projections, only problem: can't look at time varying interaction strengths between values. Coefficients only for the time delayed versions of temp. 
+Multiview embedding might improvide prediction skill, but it doesn't provide the partial derivatives. 
+So let's go with multivariate embedding for this exercise. First however, let's see how good our predictions are. In this case, we add the original time series as well as the predicted portion. Looks great! 
+```{r}
+plot(df_small$obs, df_small$temp,type='l', lwd=2, xlab="time",ylab="position")
+lines(smap_ML_multi$model_output$theta0$obs, smap_ML_multi$model_output$theta0$Predictions,col="red", lwd = 2)
+legend( 'bottomright', legend = c( "Observed", "Predicted" ),
+        fill = c( 'black', 'red' ), bty = 'n', cex = 0.6 )
+```
+
+Lastly, lets take a look at our interaction strengths. From the figure below, it does not appear that there is a time varying relationship between temp and baro. It appears to be constant and near zero. 
+```{r}
+# First we rename them. 
+smap_ML_multi_smap_coefs <- smap_ML_multi$smap_coefficients$theta0
+#names(smap_ML_multi_smap_coefs) <- c('time','dMLdAP','dMLdML','dAPdML')
+names(smap_ML_multi_smap_coefs) <- c('time','dtempdbaro','dtempdtemp','dbarodtemp')
+
+# Now let's create a plot
+plot(smap_ML_multi_smap_coefs$dtempdbaro,type='l', ylab="Interaction Strength", xlab="Time", col="black", lwd=2, ylim= c(-0.5,1))
+lines(smap_ML_multi_smap_coefs$dbarodtemp,col="blue", lwd=2,lty=2)
+lines(smap_ML_multi_smap_coefs$dtempdtemp,col="green", lwd=2, lty=3)
+legend("bottomright", legend=c("dtempdbaro","dbarodtemp","dtempdtemp"),
+       col=c("black", "blue", "green"), lty=1:3, cex=0.5)
+```

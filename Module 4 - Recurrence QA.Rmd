@@ -1,0 +1,85 @@
+---
+title: "R Notebook"
+author: "Andjanie Somaidien"
+output:
+  word_document: default
+  html_notebook: default
+  pdf_document: default
+---
+Data
+```{r}
+setwd("~/Documents/Tilly Uni/Complex Systems/R")
+Plant_1_Generation_Data <- read.csv("Plant_1_Generation_Data.csv")
+Plant_2_Generation_Data <- read.csv("Plant_2_Generation_Data.csv")
+Plant_1_Generation_Data <- Plant_1_Generation_Data[650:1651,]
+Plant_2_Generation_Data <- Plant_2_Generation_Data[650:1651,]
+```
+
+Packages
+```{r}
+require('entropy')
+require('nonlinearTseries')
+require('crqa')
+require('plot3D')
+require('tseriesChaos')
+
+```
+
+estimate the delay parameter (The first local minimum provides the lag where the time-series is most independent of itself, and embedding at this point will provide the most unique information for  a  new  dimension  in  phase-space.) d1 = 7 d2 = 3
+```{r}
+mutual(Plant_1_Generation_Data$DC_POWER,lag.max=50)
+mutual(Plant_2_Generation_Data$DC_POWER,lag.max=50)
+```
+
+estimate the embedding  dimension (m1 = 7, m2 = 8 m3=1)
+```{r}
+plot(false.nearest(Plant_1_Generation_Data$DC_POWER,m=10,d=7,t=0))
+plot(false.nearest(Plant_2_Generation_Data$DC_POWER,m=10,d=2,t=0))
+```
+
+
+```{r}
+Plant_1_Generation_Data <- Plant_1_Generation_Data[650:1651,]
+Plant_2_Generation_Data <- Plant_2_Generation_Data[650:1651,]
+```
+Optimize parameters
+```{r}
+par =list(method ="crqa", metric ="euclidean", maxlag =20, radiusspan =100, radiussample =40, normalize =0, rescale =4, mindiagline =10, minvertline =10, tw =0, whiteline =FALSE, recpt =FALSE, side ="both", datatype ="continuous", fnnpercent  =20,  typeami ="mindip", nbins  =50, criterion ="firstBelow",threshold =1, maxEmb =20, numSamples =500, Rtol =10, Atol =2)
+optParams <-optimizeParam(Plant_1_Generation_Data$DC_POWER, Plant_2_Generation_Data$DC_POWER, par,min.rec =2, max.rec =5)
+```
+
+CRQA analyse met d=7
+```{r}
+plant_result <- crqa (ts1 = Plant_1_Generation_Data$DC_POWER, ts2 = Plant_2_Generation_Data$DC_POWER,                  delay = 7, embed = 5, rescale =2, radius = 0.1019038, normalize = 2, 
+                 mindiagline =2 , minvertline =2 , tw = 0 , whiteline = FALSE, recpt = FALSE, side =                  "both", method = "crqa", metric = "euclidean", datatype = "continuous")
+```
+
+CRQA Analyse met d=16
+```{r}
+plant_result2 <- crqa (ts1 = Plant_1_Generation_Data$DC_POWER, ts2 = Plant_2_Generation_Data$DC_POWER,delay = 16, embed = 5, rescale =2, radius = 0.1019038, normalize = 2, mindiagline =2 , minvertline =2 , tw = 0 , whiteline = FALSE, recpt = FALSE, side =                  "both", method = "crqa", metric = "euclidean", datatype = "continuous")
+```
+
+
+Resultaten en plot CRQA
+```{r}
+print(plant_result[1:9])
+RP =as.matrix(plant_result$RP)
+image(RP)
+
+```
+
+
+
+DCRP
+```{r}
+df <- data.frame(Plant_1_Generation_Data$DC_POWER,Plant_2_Generation_Data$DC_POWER)
+#transform the data in a data.frame
+normalizeddf <- as.data.frame(scale(df)) #normalize the variables keeping the data.frame format
+res = drpfromts(normalizeddf$Plant_1_Generation_Data.DC_POWER, normalizeddf$Plant_2_Generation_Data.DC_POWER, windowsize = 20,
+            radius = 0.001, delay = 1, embed = 1, rescale = 0,
+             normalize = 0, mindiagline = 2, minvertline = 2,
+             tw = 0, whiteline = FALSE, recpt = FALSE, 
+             side = 'both', method = 'crqa', 
+            metric = 'euclidean', datatype = 'continuous')
+profile = res$profile 
+plot(-100:100, profile, type ="l", lwd =2, xlab ="Lag", ylab ="%REC")

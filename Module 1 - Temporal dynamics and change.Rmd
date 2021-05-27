@@ -1,0 +1,163 @@
+---
+title: "Module 2"
+output:
+  html_document: default
+  pdf_document: default
+---
+load libraries and dataset
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(forecast)
+library(fpp)
+library(fpp2)
+
+dataDIR <- "C:/Users/Gebruiker/Dropbox/Uvt/01 Master/Jaar 1/P3/Complex systems/Data/Input/"
+
+globaltemperatures <- read.csv(paste0(dataDIR, "GlobalTemperatures.csv"))
+
+#import dataset
+#globaltemperatures <- read.csv("input/GlobalTemperatures.csv", stringsAsFactors = FALSE)
+#globaltemperatures$observation <- 1:nrow(globaltemperatures) 
+globaltemperatures$dt <- as.Date(globaltemperatures$dt,
+                                   "%Y-%d-%m",
+                                   tz = "Europe/London")
+```
+
+last 260 years in trends
+```{r}
+glob_land_1750_2015 <- window(globaltemperatures$LandAverageTemperature, start = 1, end = 3192)
+temp_1750_1882 <- ts(glob_land_1750_2015, frequency = 12, start = c(1750,1))
+glob_land_ma_1750_2015 <- ma(glob_land_1750_2015, order = 12)
+Temp_c.1 <- ts(glob_land_ma_1750_2015, frequency = 12, start = c(1750,1))
+
+ggplot(data = globaltemperatures, aes(x = dt, y = glob_land_1750_2015))+ geom_line() +
+  theme_bw()+
+  labs(title = "Temperature 1750-2015",
+       x = "Year",
+       y = "Temperature")
+
+ggplot(data = globaltemperatures, aes(x = dt, y = glob_land_1750_2015))+ geom_line() +
+  geom_line(aes(dt,glob_land_ma_1750_2015),color="red") + 
+  theme_bw()+
+  labs(title = "Temperature 1750-2015",
+       x = "Year",
+       y = "Temperature")
+
+```
+
+Regression line through moving average
+```{r}
+ggplot(data = globaltemperatures, aes(x = dt, y = glob_land_ma_1750_2015))+ geom_line()+
+  theme_bw()+
+  geom_smooth(method='lm', formula= y~x, color = "red") + 
+  labs(title = "Temperature 1750-2015",
+       x = "Year",
+       y = "Temperature")
+```
+
+ggplot(data = globaltemperatures, geom_line(aes(x = Time, y = Landtemperatures))+
+  geom_smooth(method='lm', formula= y~x, color = "red") + 
+  labs(title = "Temperature 1750-2015",x = "Year", y = "Temperature")
+  theme_bw()
+
+1750-1882
+```{r}
+glob_land_1750_1882 <- window(globaltemperatures$LandAverageTemperature, start = 1, end = 1597)
+glob_land_ma_1750_1882 <- ma(glob_land_1750_1882, order = 12)
+Temp_c.2 <- ts(glob_land_ma_1750_1882, frequency = 12, start = c(1750,1))
+globaltemperatures1 <- globaltemperatures[1:1597,]
+
+ggplot(data = globaltemperatures1, aes(x = dt, y = glob_land_1750_1882))+
+  geom_line() +
+  geom_line(aes(x=dt,y=glob_land_ma_1750_1882),color="red") +
+  theme_bw()+
+  labs(title = "Temperature 1750-1882",
+       x = "Year",
+       y = "Temperature")
+```
+
+1882-1970
+```{r}
+glob_land_1882_1970 <- window(globaltemperatures$LandAverageTemperature, start = 1597, end = 2677)
+glob_land_ma_1882_1970 <- ma(glob_land_1882_1970, order = 12)
+Temp_c.3 <- ts(glob_land_ma_1882_1970, frequency = 12, start = c(1883,1))
+globaltemperatures2 <- globaltemperatures[1597:2677,]
+
+ggplot(data = globaltemperatures2, aes(x = dt, y = glob_land_1882_1970))+
+  geom_line() +
+  geom_line(aes(x=dt,y=glob_land_ma_1882_1970),color="red") +
+  theme_bw()+
+  labs(title = "Temperature 1882-1970",
+       x = "Year",
+       y = "Temperature")
+
+```
+
+```{r}
+glob_land_1973_2015 <- window(globaltemperatures$LandAverageTemperature, start = 2677, end = 3192)
+glob_land_ma_1973_2015 <- ma(glob_land_1973_2015, order = 12)
+Temp_c.4 <- ts(glob_land_ma_1973_2015, frequency = 12, start = c(1973,1))
+globaltemperatures3 <- globaltemperatures[2677:3192,]
+
+ggplot(data = globaltemperatures3, aes(x = dt, y = glob_land_1973_2015))+
+  geom_line() +
+  geom_line(aes(x=dt,y=glob_land_ma_1973_2015),color="red") +
+  theme_bw()+
+  labs(title = "Temperature 1973-2015",
+       x = "Year",
+       y = "Temperature")
+```
+
+
+ggplot(data = globaltemperatures, geom_line(aes(x = Time, y = Landtemperature))+
+  geom_line(aes(x = Time, y = Landtemperature_movingaverage), color = "red") +
+  labs(title = "Temperature 1973-2015",x = "Year",y = "Temperature")
+  theme_bw()
+
+       
+       
+       
+stl function
+```{r}
+#periodic behaviours
+#1755-1770
+glob_land_1755_1770 <- window(globaltemperatures$LandAverageTemperature, start = 61, end = 252)
+temp_1755_1770 <- ts(glob_land_1755_1770, frequency = 12, start = c(1755,1))
+glob_land_1755_1770 <- na.omit(glob_land_1755_1770)
+z.1 <- ts(glob_land_1755_1770, frequency = 12, start = c(1755,1))
+plot(stl(z.1, "periodic"),main = "STL plot 1755-1770")
+
+plot(temp_1755_1770)
+glob_land_ma_1755_1770 <- ma(temp_1755_1770, order = 12)
+lines(glob_land_ma_1755_1770, col =2)
+```
+
+#1890-1905
+```{r}
+glob_land_1890_1905 <- window(globaltemperatures$LandAverageTemperature, start = 1681, end = 1860)
+temp_1890_1905 <- ts(glob_land_1890_1905, frequency = 12, start = c(1890,1))
+plot(temp_1890_1905)
+glob_land_ma_1890_1905 <- ma(temp_1890_1905, order = 12)
+lines(glob_land_ma_1890_1905, col =2)
+
+glob_land_1890_1905 <- na.omit(glob_land_1890_1905)
+z.2 <- ts(glob_land_1890_1905, frequency = 12, start = c(1890,1))
+plot(stl(z.2, "periodic"), main="STL plot 1890-1905")
+```
+
+```{R}
+#2000-2015 
+glob_land_2000_2015 <- window(globaltemperatures$LandAverageTemperature, start = 3001, end = 3192)
+temp_2000_2015 <- ts(glob_land_2000_2015, frequency = 12, start = c(2000,1))
+plot(temp_2000_2015)
+glob_land_ma_2000_2015 <- ma(temp_2000_2015, order = 12)
+lines(glob_land_ma_2000_2015, col =2)
+
+glob_land_2000_2015 <- na.omit(glob_land_2000_2015)
+z.3 <- ts(glob_land_2000_2015, frequency = 12, start = c(2000,1))
+plot(stl(z.3, "periodic"),main="STL plot 2000-2015")
+```

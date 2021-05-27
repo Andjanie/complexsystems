@@ -1,0 +1,87 @@
+---
+title: "Module 10 - Fractals and Scaling"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#Install packages and import data
+library(MFDFA)
+library(ifultools)
+library(nonlinearTseries)
+
+climate_data <- read.csv(file = paste0('Master DSS/Complex Systems/climate_data.csv'))
+
+#Set seed and turn off scientific notation
+set.seed(123)
+options(scipen=999)
+
+```
+
+```{r}
+#Investigate data
+
+#Check if there are any missing values in our variable
+sum(is.na(climate_data$Average_TemperatureC))
+
+#Plot Average Temperature against Time
+plot(climate_data$Average.temperature..Â.F., type = 'l', xlab = "Time", ylab = "Signal Ampitude", main = 'Average Temperature')
+"Average temperature is not centered as shown in the plot (the intercept with the y-axis is around the mean of the Average Temperature."
+
+#Need to mean-center the data around zero
+climate_data$Average_TemperatureC <- as.numeric(scale(climate_data$Average.temperature..Â.F., center = TRUE, scale = FALSE))
+
+#Check if it worked
+plot(climate_data$Average_TemperatureC, type = 'l', xlab = "Time", ylab = "Signal Ampitude", main = 'Average Temperature')
+
+```
+
+```{r}
+#We we'll need to prove that there is a sign of self-similarity over multiple scales (e.g., that there is a fractal)
+### First we we'll test the DFA
+#Set parameters
+scale.min <- 16
+scale.max <- length(climate_data$Average_TemperatureC)/4
+scale.num <- logScale(scale.min = scale.min, scale.max = scale.max, scale.ratio = 1.25)
+
+#Perform analysis
+dfa.analysis <- dfa(time.series = climate_data$Average_TemperatureC, npoints = scale.num, window.size.range = c(scale.min, scale.max), do.plot=FALSE)
+temp_estimate <- estimate(dfa.analysis, do.plot=TRUE)
+
+```
+
+```{r}
+###Second of all we'll test the MFDFA
+#Set parameters
+scale.min2 <- 16
+scale.max2 <- length(climate_data$Average_TemperatureC)/4
+scale.num2 <- logScale(scale.min = scale.min, scale.max = scale.max, scale.ratio = 2)
+q <- -10:10 #range of q order exponents
+m <- 1 #detrending order
+
+#Perform analysis
+mfdfa.n50.out <- MFDFA(climate_data$Average_TemperatureC, scale = scale.num2, q=q, m=m)
+set.seed(33)
+mfdfa.n50.surr.out <- MFDFA(sample(climate_data$Average_TemperatureC, rep=FALSE), scale = scale.num2, q = q, m = m)
+graphics::matplot(mfdfa.n50.out$line, type='l', pch=19, add=FALSE, xlab="log Scale", ylab="log Fq", main = "Nifty 50 Closing")
+
+```
+
+```{r}
+#Plot the Multifractal singularity spectrum 
+plot(mfdfa.n50.out$spec$hq, mfdfa.n50.out$spec$Dq, type="b", pch=19, xlab="h(q)", ylab = "D(h)", main = "Multifractal singularity spectrum")
+
+#Calculate the range of multifractal singularity spectrum
+max(mfdfa.n50.out$spec$hq) - min(mfdfa.n50.out$spec$hq) 
+max(mfdfa.n50.surr.out$spec$hq) - min(mfdfa.n50.surr.out$spec$hq)
+```
+
+```{r}
+#Visualize the relationship between H(q) and q
+plot(q, mfdfa.n50.out$Hq, type='l', xlab = "q", ylab = "H(q)", main = "H(q) plotted against q")
+```
+
+

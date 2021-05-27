@@ -1,0 +1,105 @@
+---
+title: "Module 6 - Phase Space Reconstruction"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#Load packages and data
+require(nonlinearTseries)
+require(crqa)
+require(casnet)
+require(tseriesChaos)
+require(plot3D)
+require(scatterplot3d)
+require(rgl)
+require(ggplot2)
+require(Hmisc)
+
+GT_data <- read.csv("~/Master DSS/Complex Systems/Plant_1_Weather_Sensor_Data.csv")
+
+#Turn off scientific notation
+options(scipen=999)
+```
+
+```{r}
+#Inspect the data
+# Plot the x and y series a
+plot(GT_data$MODULE_TEMPERATURE,type ='l', xlab = 'Time', ylab = 'Value')
+mtext(side=3, line=0.2, "Ambient-Module Temperature Time Series ",font=2, cex= 1)
+lines(GT_data$AMBIENT_TEMPERATURE,type ='l',col ='2')
+plot(GT_data$AMBIENT_TEMPERATURE,GT_data$MODULE_TEMPERATURE,type='l', ylab= 'Module Temperature', xlab= 'Ambient Temperature')
+mtext(side = 3, line = 0.2, "Module Temperature against Ambient Temperature", font = 2, cex = 1)
+
+```
+
+```{r}
+#Construct a change variable for the both of the variables Ambient- and Module Temperature
+# Create a change variable (simple difference or estimate of velocity)
+GT_data$AMBIENT_TEMPERATURE_lag1 <-  Lag(GT_data$AMBIENT_TEMPERATURE, 1)
+GT_data$AMBIENT_TEMPERATURE_lead1 <- Lag(GT_data$AMBIENT_TEMPERATURE, -1)
+GT_data$AMBIENT_TEMPERATURE_change <- (GT_data$AMBIENT_TEMPERATURE_lead1 - GT_data$AMBIENT_TEMPERATURE_lag1)/2
+
+GT_data$MODULE_TEMPERATURE_lag1 <- Lag(GT_data$MODULE_TEMPERATURE,1)
+GT_data$MODULE_TEMPERATURE_lead1 <- Lag(GT_data$MODULE_TEMPERATURE,-1)
+GT_data$MODULE_TEMPERATURE_change <- (GT_data$MODULE_TEMPERATURE_lead1 - GT_data$MODULE_TEMPERATURE_lag1)/2
+
+# Plot the change time series
+plot(GT_data$MODULE_TEMPERATURE_change,type='l', xlab='Time', ylab='Change')
+lines(GT_data$AMBIENT_TEMPERATURE_change, col='2')
+mtext(side=3, line=0.2, "Change time series Ambient- and Module Temperature",font=2, cex= 1)
+```
+
+```{r}
+#Determine an appropriate time delay for the phase space reconstruction
+# First check the autocorrelation function (ACF) method
+tau.acf1 <- timeLag(GT_data$AMBIENT_TEMPERATURE, technique = "acf", lag.max = 50, do.plot = T)
+tau.acf2 <- timeLag(GT_data$AMBIENT_TEMPERATURE, technique = "acf", lag.max = 100, do.plot = T)
+tau.acf3 <- timeLag(GT_data$AMBIENT_TEMPERATURE, technique = "acf", lag.max = 1000, do.plot = T)
+print(tau.acf1, tau.acf2, tau.acf3)
+
+"We can conclude that with 100 max lag we looked at enough lags because at 1000 max lag it is still gives 18 as the optimal time delay."
+
+#Second, check the average mutual information (AMI) method
+tau.ami <- timeLag(GT_data$AMBIENT_TEMPERATURE, technique = "ami", lag.max = 100, do.plot = T)
+print(tau.ami)
+
+```
+
+```{r}
+#Determine an appropriate embedding dimension for the phase space reconstruction
+#First check the False Nearest Neighbors method
+fnn.out <- false.nearest(GT_data$AMBIENT_TEMPERATURE, m = 15, d = tau.ami, t = 50, eps = sd(GT_data$AMBIENT_TEMPERATURE)/10 )
+
+#Second the Cao's method
+emb.dim <- estimateEmbeddingDim(GT_data$AMBIENT_TEMPERATURE, time.lag = tau.ami, max.embedding.dim = 15)
+print(emb.dim)
+
+```
+
+```{r}
+#Construct the phase space using the buildTakens function and the two parameters as determined before
+#Construct the phase space
+AMBIENT_TEMPERATURE.ps <- buildTakens(GT_data$AMBIENT_TEMPERATURE,emb.dim,tau.ami)
+
+#Inspect the matrix of the phase space
+View(AMBIENT_TEMPERATURE.ps)
+```
+
+```{r}
+#Visualize the phase space as reconstructed
+
+#Plot the embedded data in the appropriate embedding dimension or the maximum possible
+# Quick 2d plot
+plot(AMBIENT_TEMPERATURE.ps)
+
+# Some 3D plots because we can't plot 10 dimensions
+lines3D(AMBIENT_TEMPERATURE.ps[,1],AMBIENT_TEMPERATURE.ps[,2],AMBIENT_TEMPERATURE.ps[,3], t="l", col="blue", asp=1)
+scatterplot3d(AMBIENT_TEMPERATURE.ps[,1],AMBIENT_TEMPERATURE.ps[,2],AMBIENT_TEMPERATURE.ps[,3],pch=20, color = "blue")
+plot3d(AMBIENT_TEMPERATURE.ps[,1],AMBIENT_TEMPERATURE.ps[,2],AMBIENT_TEMPERATURE.ps[,3],col = 'blue', size=.5)
+```
+
+

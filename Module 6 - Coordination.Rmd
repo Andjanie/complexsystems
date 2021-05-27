@@ -1,0 +1,301 @@
+---
+title: "Module 6"
+author: "Teun Valk"
+date: "16-5-2021"
+output: html_document
+---
+
+# Clear environment, set data directory and load packages
+```{r}
+
+rm(list = ls(all.names = TRUE))
+Sys.setlocale("LC_ALL", "English")
+
+dataDIR <- "C:/Users/teun_/OneDrive/Documenten/Master Data Science and Society/Complex Systems/ePortfolio/data/"
+
+
+```
+
+# Load and transform data
+```{r}
+
+solarpower <- read.csv(paste0(dataDIR, "SolarPower.csv"))
+solarpower$DATE_TIME <- as.POSIXct(solarpower$DATE_TIME,
+                                   "%d-%m-%Y %H:%M",
+                                   tz = "Europe/London")
+solarpower <- aggregate(formula = DC_POWER ~ DATE_TIME,
+                        data = solarpower,
+                        FUN = mean)
+colnames(solarpower) <- c("DATE_TIME", "DC_Power_A")
+solarpower$DATE_TIME <- as.POSIXct(solarpower$DATE_TIME, tz = "Europe/London")
+
+
+power2 <- read.csv(paste0(dataDIR, "Plant_1_Weather_Sensor_Data.csv"))
+power2$DATE_TIME <- as.POSIXct(power2$DATE_TIME,
+                               "%Y-%m-%d %H:%M:%S",
+                               tz = "Europe/London")
+power2 <- aggregate(formula = IRRADIATION ~ DATE_TIME,
+                        data = power2,
+                        FUN = mean)
+power2$DATE_TIME <- as.POSIXct(power2$DATE_TIME, tz = "Europe/London")
+
+
+```
+
+# Combine the datasets
+```{r}
+
+total <- seq.POSIXt(from = as.POSIXct("2020-05-15 00:00:00"),
+                    to = as.POSIXct("2020-06-17 23:45:00"),
+                    by = 3600)
+
+total <-  data.frame(DATE_TIME = total,
+                     DC_POWER_A = rep(NA, length(total)),
+                     IRRADIATION = rep(NA, length(total)))
+total$DATE_TIME <- as.POSIXct(total$DATE_TIME, tz = "Europe/London")
+
+total$DC_POWER_A <- solarpower$DC_Power_A[match(total$DATE_TIME, solarpower$DATE_TIME)]
+total$IRRADIATION <- power2$IRRADIATION[match(total$DATE_TIME, power2$DATE_TIME)]
+
+solarpower <- na.omit(total)
+rm(list = c("total", "power2"))
+
+```
+
+# Plot phase portrait for DC Power
+```{r}
+
+par(mfrow=c(1,2))
+
+plot(x = solarpower$DC_POWER_A[1:length(solarpower$DC_POWER_A)-1],
+     y = diff(solarpower$DC_POWER_A),
+     pch = 20,
+     xlab = "DC Power",
+     ylab = "Lagged difference in DC Power",
+     cex = 0.9,
+     title("DC Power", line = 1))
+
+plot(x = solarpower$IRRADIATION[1:length(solarpower$IRRADIATION)-1],
+     y = diff(solarpower$IRRADIATION),
+     pch = 20,
+     xlab = "Radiation",
+     ylab = "Lagged difference in Radiation",
+     cex = 0.9,
+     title("Radiation", line = 1))
+
+mtext("Phase portrait", side = 3, line = -2, outer = TRUE, cex = 1.6, font = 2)
+
+```
+
+# Preprocess the data and calculate continuous relative phase 
+```{r}
+#Center both time-series
+solarpower$DC_POWER_A_centered <- solarpower$DC_POWER_A - min(solarpower$DC_POWER_A) - 
+                                  (max(solarpower$DC_POWER_A) - min(solarpower$DC_POWER_A)) / 2
+
+solarpower$IRRADIATION_centered <- solarpower$IRRADIATION - min(solarpower$IRRADIATION) -  
+                                   (max(solarpower$IRRADIATION) - min(solarpower$IRRADIATION)) / 2
+
+
+```
+
+# Plot the Lamb & Stöckl method
+```{r}
+
+plot(x = solarpower$DATE_TIME[0:153], 
+     y = solarpower$DC_POWER_A_centered[0:153], 
+     type='l', 
+     ylab = 'y(t)', 
+     xlab = 't', 
+     main = "DC Power centered", 
+     lwd=2)
+
+plot(x = solarpower$DATE_TIME[0:153], 
+     y = solarpower$IRRADIATION_centered[0:153], 
+     type='l', 
+     ylab = 'y(t)', 
+     xlab = 't', 
+     main = "Radiation centered", 
+     lwd=2)
+
+par(mfrow=c(1,2))
+
+plot(x = solarpower$DATE_TIME[0:153], 
+     y = solarpower$DC_POWER_A_centered[0:153], 
+     type='l', 
+     ylab = 'y(t)', 
+     xlab = 't', 
+     main = "DC Power", 
+     lwd=2)
+
+plot(x = solarpower$DATE_TIME[0:153], 
+     y = solarpower$IRRADIATION_centered[0:153], 
+     type='l', 
+     ylab = 'y(t)', 
+     xlab = 't', 
+     main = "Radiation", 
+     lwd=2)
+mtext("Centered according to the Lamb & Stöckl method", side = 3, line = -1, outer = TRUE, cex = 1.2, font = 2)
+
+```
+
+# Perform the Hilbert Transform and calculate the instantaneous phase angle for the two times series
+```{r}
+
+require(hht)
+
+solarpower$HT_DC_POWER_A_centered <- HilbertTransform(solarpower$DC_POWER_A_centered)
+solarpower$HT_IRRADIATION_centered <- HilbertTransform(solarpower$IRRADIATION_centered)
+
+
+```
+
+# Plot the Hilbert Transform of DC Power
+```{r}
+
+plot(x = solarpower$DATE_TIME[0:153], 
+     solarpower$DC_POWER_A_centered[0:153], 
+     xlim = c(min(solarpower$DATE_TIME[0:153]), max(solarpower$DATE_TIME[0:153])), 
+     main = "Hilbert Transform of DC Power",
+     xlab = "Date",
+     ylab = "DC Power")
+lines(solarpower$DATE_TIME[0:153], Re(solarpower$HT_DC_POWER_A_centered[0:153]), col = "green", lwd=2)
+lines(solarpower$DATE_TIME[0:153], Im(solarpower$HT_DC_POWER_A_centered[0:153]), col = "red", lwd=2)
+legend("topright", col = c("black", "green", "red"), 
+lty = c(NA, 1, 1), pch = c(1, NA, NA), 
+legend = c("Signal", "Real", "Imaginary"))
+
+```
+
+# Plot the Hilbert Transform of Radiation
+```{r}
+
+plot(x = solarpower$DATE_TIME[0:153], 
+     solarpower$IRRADIATION_centered[0:153], 
+     xlim = c(min(solarpower$DATE_TIME[0:153]), max(solarpower$DATE_TIME[0:153])), 
+     main = "Hilbert Transform of Radiation",
+     xlab = "Date",
+     ylab = "Radiation")
+lines(solarpower$DATE_TIME[0:153], Re(solarpower$HT_IRRADIATION_centered[0:153]), col = "green", lwd=2)
+lines(solarpower$DATE_TIME[0:153], Im(solarpower$HT_IRRADIATION_centered[0:153]), col = "red", lwd=2)
+legend("topright", col = c("black", "green", "red"), 
+lty = c(NA, 1, 1), pch = c(1, NA, NA), 
+legend = c("Signal", "Real", "Imaginary"))
+
+
+par(mfrow=c(1,2))
+
+plot(x = solarpower$DATE_TIME[0:153], 
+     solarpower$DC_POWER_A_centered[0:153], 
+     xlim = c(min(solarpower$DATE_TIME[0:153]), max(solarpower$DATE_TIME[0:153])), 
+     main = "Hilbert Transform of DC Power",
+     xlab = "Date",
+     ylab = "DC Power")
+lines(solarpower$DATE_TIME[0:153], Re(solarpower$HT_DC_POWER_A_centered[0:153]), col = "green", lwd=2)
+lines(solarpower$DATE_TIME[0:153], Im(solarpower$HT_DC_POWER_A_centered[0:153]), col = "red", lwd=2)
+legend("topright", col = c("black", "green", "red"), 
+lty = c(NA, 1, 1), pch = c(1, NA, NA), 
+legend = c("Signal", "Real", "Imaginary"))
+
+plot(x = solarpower$DATE_TIME[0:153], 
+     solarpower$IRRADIATION_centered[0:153], 
+     xlim = c(min(solarpower$DATE_TIME[0:153]), max(solarpower$DATE_TIME[0:153])), 
+     main = "Hilbert Transform of Radiation",
+     xlab = "Date",
+     ylab = "Radiation")
+lines(solarpower$DATE_TIME[0:153], Re(solarpower$HT_IRRADIATION_centered[0:153]), col = "green", lwd=2)
+lines(solarpower$DATE_TIME[0:153], Im(solarpower$HT_IRRADIATION_centered[0:153]), col = "red", lwd=2)
+legend("topright", col = c("black", "green", "red"), 
+lty = c(NA, 1, 1), pch = c(1, NA, NA), 
+legend = c("Signal", "Real", "Imaginary"))
+
+mtext("Hilbert Transform", side = 3, line = -1, outer = TRUE, cex = 1.2, font = 2)
+
+```
+
+# Calculate the phase angles for each signal plot them
+```{r}
+
+solarpower$Phase_angle_A <- pracma::rad2deg(atan2(Im(solarpower$HT_DC_POWER_A_centered),
+                                                  Re(solarpower$HT_DC_POWER_A_centered)))
+solarpower$Phase_angle_B <- pracma::rad2deg(atan2(Im(solarpower$HT_IRRADIATION_centered),
+                                                  Re(solarpower$HT_IRRADIATION_centered)))
+
+plot(solarpower$DATE_TIME[0:153],
+     solarpower$Phase_angle_A[0:153], 
+     type='l',
+     col='black',
+     lwd=2,
+     main = "Phase angles",
+     xlab = "Date",
+     ylab = "Phase angle")
+lines(solarpower$DATE_TIME[0:153],
+      solarpower$Phase_angle_B[0:153],
+      col='red',
+      lwd=2)
+legend("topright",
+       col = c("black", "red"), 
+       lty = c(1, 1),
+       legend = c("DC Power", "Radiation"))
+
+```
+
+# Calculate the continuous relative phase and visualize them
+```{r}
+
+solarpower$relative.phase <- abs(solarpower$Phase_angle_A - solarpower$Phase_angle_B)
+
+plot(solarpower$DATE_TIME[0:153], 
+     solarpower$relative.phase[0:153], 
+     ylim = c(0,400), 
+     type = 'l', 
+     lwd=2,
+     col="blue", 
+     xlab="Date", 
+     ylab="Continuous Relative Phase",
+     main = "Continuous relative phase per day")
+
+#ggplot(data = solarpower[0:300,],
+#       aes(x = DATE_TIME, y = relative.phase))+
+#  geom_line()+
+#  theme_bw()
+
+```
+
+# Perform correction of discontinuous values as described in Ippersiel et al. 2021
+```{r}
+
+solarpower$relative.phase[solarpower$relative.phase > 180] <- (360 - solarpower$relative.phase[solarpower$relative.phase > 180])
+
+plot(solarpower$DATE_TIME[0:153], 
+     solarpower$relative.phase[0:153], 
+     ylim = c(0,50), 
+     type = 'l', 
+     lwd=2,col="blue", 
+     xlab="Time", 
+     ylab="Continuous Relative Phase",
+     main = "Continuous relative phase after correcting for discontinuous values")
+
+mean(solarpower$relative.phase)
+
+```
+
+# What do you observe? Is there a consistent phase relation between DC Power and B? Are they in phase? Or anti-phase?
+```{r}
+
+hist(solarpower$relative.phase,
+     xlab='Relative Phase', 
+     main= "Distribution of Relative Phase Values")
+
+```
+
+# Calculate circular mean
+```{r}
+
+require(circular)
+
+circ.crp <- circular(solarpower$relative.phase, units="degrees")
+is.circular(circ.crp)
+mean(circ.crp)
+
+```

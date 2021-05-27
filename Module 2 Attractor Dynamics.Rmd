@@ -1,0 +1,200 @@
+---
+title: "Module 2"
+author: "Teun Valk"
+date: "27-4-2021"
+output: html_document
+---
+
+# Clear environment, load packages and set data directory
+```{r}
+
+rm(list = ls(all.names = TRUE))
+
+require(Hmisc)
+require(grid)
+require(ggplot2)
+require(EGAnet)
+
+dataDIR <- "C:/Users/teun_/OneDrive/Documenten/Master Data Science and Society/Complex Systems/ePortfolio/data/"
+
+```
+
+# Load ans transform power data
+```{r}
+
+solarpower <- read.csv(paste0(dataDIR, "SolarPower.csv"))
+
+solarpower$DATE_TIME <- as.POSIXct(solarpower$DATE_TIME,
+                                   "%d-%m-%Y %H:%M",
+                                   tz = "Europe/London")
+solarpower <- aggregate(formula = DC_POWER ~ DATE_TIME,
+                        data = solarpower,
+                        FUN = mean)
+
+solarpower$DATE_TIME <- as.Date(solarpower$DATE_TIME,
+                                   "%d-%m-%Y %H:%M",
+                                   tz = "Europe/London")
+solarpower <- aggregate(formula = DC_POWER ~ DATE_TIME,
+                        data = solarpower,
+                        FUN = max)
+
+```
+
+# Load ans transform weather data, add to solarpower
+```{r}
+
+weather <- read.csv(paste0(dataDIR,"Plant_1_Weather_Sensor_Data.csv"))
+
+weather$DATE_TIME <- as.Date(weather$DATE_TIME)
+weather <- aggregate(formula = IRRADIATION ~ DATE_TIME,
+                     data = weather,
+                     FUN = mean)
+
+solarpower <- cbind(solarpower, IRRADIATION = weather$IRRADIATION)
+
+rm(weather)
+
+```
+
+# Calculate basic difference scores and derivatives estimated by GLLA
+```{r}
+
+solarpower$lag1 <- Lag(solarpower$DC_POWER,1)
+solarpower$lead1 <- Lag(solarpower$DC_POWER,-1)
+solarpower$change <- (solarpower$lead1 - solarpower$lag1)/2
+
+deriv <- glla(x = solarpower$DC_POWER, n.embed = 3, tau = 1, delta = 1, order = 2)
+solarpower$DerivOrd1 <- as.numeric(NA)
+solarpower$DerivOrd2 <- as.numeric(NA)
+
+solarpower$DerivOrd1[2:33] <- deriv[33:64]
+solarpower$DerivOrd2[2:33] <- deriv[65:96]
+
+```
+
+# Plot the max DC-Power per day
+```{r}
+
+ggplot(data = solarpower,
+       aes(x = DATE_TIME, y = DC_POWER))+
+  geom_line()+
+  theme_bw()+
+  labs(title = "Maximum average DC Power per day",
+       x = "Day",
+       y = "DC Power")
+
+```
+
+# Plot the normal change time series
+```{r}
+
+ggplot(data = solarpower,
+       aes(x = DATE_TIME, y = change))+
+  geom_line()+
+  theme_bw()+
+  labs(title = "Change in maximum average DC Power per day",
+       x = "Day",
+       y = "DC Power")
+
+```
+
+# Plot the GLLA change time series
+```{r}
+
+ggplot(data = solarpower,
+       aes(x = DATE_TIME, y = DerivOrd2))+
+  geom_line()+
+  theme_bw()+
+  labs(title = "GLLA Derivative change in maximum average DC Power per day",
+       x = "Day",
+       y = "DC Power")
+
+```
+
+# Create Vector density plot
+```{r}
+
+ggplot(data = solarpower,
+       aes(x = DATE_TIME, y = DC_POWER))+
+  geom_segment(aes(xend = DATE_TIME, yend = DC_POWER + change),
+               arrow = arrow(length = unit(.2, "cm")))+
+  stat_density2d(aes(colour = ..level..))+
+  labs(title = "Vector Density Plot of change in maximum average DC Power",
+       x = "Day",
+       y = "DC Power")+
+  theme_bw()
+
+```
+
+# Plot radiation rate
+```{r}
+
+ggplot(data = solarpower,
+       aes(x = DATE_TIME, y = IRRADIATION))+
+  geom_line()+
+  theme_bw()+
+  labs(title = "Solar radiation per day",
+       x = "Day",
+       y = "Radiation")
+
+```
+# Plot the DC_power against the change
+```{r}
+
+
+
+mod1 <- lm(change~DC_POWER,
+           data = solarpower)
+summary(mod1)
+plot(mod1)
+
+plot(solarpower$DC_POWER,solarpower$change)
+abline(mod1)
+abline(h = 0)
+
+"There seems to be no correlation between the maximum average DC Power and the amount of change in the maximum average DC Power."
+
+```
+
+# Add in a potential control parameter here
+```{r}
+
+mod2 <- lm(change~DC_POWER + IRRADIATION,
+           data = solarpower)
+summary(mod2)
+plot(mod2)
+
+```
+
+# Add polynomial
+```{r}
+
+mod3 <- lm(change~poly(DC_POWER,3),
+           data = solarpower)
+summary(mod3)
+plot(mod3)
+
+```
+
+# Plot Topology
+```{r}
+
+ggplot(data = solarpower,
+       aes(x = DC_POWER,y = change))+
+  geom_point()+
+  geom_smooth(col = "blue")+
+  geom_segment(aes(x = 11750, y = -750, xend = 11750, yend = -200),
+               arrow = arrow(length = unit(0.3, "cm"), type = "closed"),
+               col = "orangered2", size = 1)+
+  geom_segment(aes(x = 12300, y = -750, xend = 12300, yend = -200),
+               arrow = arrow(length = unit(0.3, "cm"), type = "closed"),
+               col = "green3", size = 1)+
+  geom_segment(aes(x = 13000, y = -750, xend = 13000, yend = -200),
+               arrow = arrow(length = unit(0.3, "cm"), type = "closed"),
+               col = "orangered2", size = 1)+
+  theme_bw()+
+  labs(title = "Change in DC Power per maximum average DC power",
+       x = "DC Power",
+       y = "Change in DC Power")
+
+```
